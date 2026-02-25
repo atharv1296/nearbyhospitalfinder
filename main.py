@@ -14,16 +14,26 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
+    # This helps Chrome run in small memory environments like Render
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--proxy-server='direct://'")
+    chrome_options.add_argument("--proxy-bypass-list=*")
+    chrome_options.add_argument("--start-maximized")
 
     driver = webdriver.Chrome(options=chrome_options)
     wait = WebDriverWait(driver, 20)
     hospitals = []
 
     try:
-        driver.get(f"https://www.google.com/maps/search/{coords}")
+        # Step 1: Force location via search URL
+        search_target = f"https://www.google.com/maps/search/{coords}"
+        print(f"Opening Target URL: {search_target}")
+        driver.get(search_target)
 
-        # Click "Nearby" button
+        # Step 2: Click "Nearby" 
+        print("Searching for 'Nearby' button...")
         nearby_btn = wait.until(
             EC.element_to_be_clickable((By.XPATH, '//button[@aria-label="Nearby"]'))
         )
@@ -31,8 +41,9 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
 
         time.sleep(2)
 
-        # Search for specific disease clinics
-        search_query = f"{disease} hospitals/clinics near me"
+        # Step 3: Search for disease (removed 'near me' to avoid confusion with server IP)
+        search_query = f"{disease} hospitals clinics"
+        print(f"Executing search for: {search_query}")
         active_element = driver.switch_to.active_element
         active_element.send_keys(search_query)
         active_element.send_keys("\n")

@@ -1,0 +1,50 @@
+# Nearby Hospital Finder API Access Guide
+
+You can access the deployed API at: https://nearbyhospitalfinder.onrender.com
+
+## Endpoint: Get Nearby Hospitals
+Fetch the Top 5 hospitals based on disease/specialty and location (Latitude & Longitude).
+
+**URL:** `https://nearbyhospitalfinder.onrender.com/hospitals`
+**Method:** `GET`
+
+### Query Parameters:
+| Parameter | Type   | Description | Example |
+|-----------|--------|-------------|---------|
+| `disease` | String | Type of disease or specialist | `heart`, `dental`, `migraine` |
+| `lat`     | Float  | Your current Latitude | `18.6234` |
+| `lon`     | Float  | Your current Longitude | `73.8220` |
+
+---
+
+### Example Request (Browser or Postman):
+`https://nearbyhospitalfinder.onrender.com/hospitals?disease=heart&lat=18.6135&lon=73.8165`
+
+### Example Request (cURL):
+```bash
+curl "https://nearbyhospitalfinder.onrender.com/hospitals?disease=heart&lat=18.6135&lon=73.8165"
+```
+
+### Example Request (JavaScript/Fetch):
+```javascript
+fetch("https://nearbyhospitalfinder.onrender.com/hospitals?disease=heart&lat=18.6135&lon=73.8165")
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+
+---
+
+### Expected Response Format:
+```json
+{
+  "results": [
+    {
+      "name": "Synergy Heart & Multispeciality Hospital",
+      "rating": 4.8,
+      "phone": "020 6733 3666",
+      "link": "https://www.google.com/maps/place/..."
+    },
+    ...
+  ]
+}
+```
