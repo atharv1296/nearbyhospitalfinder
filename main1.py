@@ -20,10 +20,7 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
-def scrape_hospitals(disease: str, lat: float, lon: float):
-    coords = f"{lat},{lon}"
-    
-    # Aggressive performance optimizations
+def get_common_chrome_options():
     chrome_options = Options()
     chrome_options.add_argument("--headless=new") # Run in background
     chrome_options.add_argument("--no-sandbox")
@@ -32,34 +29,32 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Don't load images (much faster)
     chrome_options.add_argument("--window-size=1920,1080")
+    return chrome_options
+
+def scrape_hospitals(disease: str, lat: float, lon: float):
+    coords = f"{lat},{lon}"
+    chrome_options = get_common_chrome_options()
     
     driver = webdriver.Chrome(options=chrome_options)
-    wait = WebDriverWait(driver, 15) # Shorter but effective wait
+    wait = WebDriverWait(driver, 15) 
     hospitals = []
 
     try:
-        # Step 1: Open Google Maps directly with coords
         driver.get(f"https://www.google.com/maps/search/{coords}")
 
-        # Step 2: Click "Nearby" 
         nearby_btn = wait.until(
-            EC.element_to_be_clickable((By.XPATH, '//button[@aria-label="Nearby"]'))
+            EC.element_to_be_clickable((By.XPATH, '//button[contains(@aria-label,"Nearby")]'))
         )
         nearby_btn.click()
 
-        # Small buffer for input focus
         time.sleep(1)
 
-        # Step 3: Search for disease
         search_query = f"{disease} hospitals clinics"
         active_element = driver.switch_to.active_element
         active_element.send_keys(search_query)
         active_element.send_keys("\n")
 
-        # Step 4: Wait for result cards to appear
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "Nv2PK")))
-        
-        # Short sleep to let the JS populate data fields (rating/phone)
         time.sleep(2)
 
         cards = driver.find_elements(By.CLASS_NAME, "Nv2PK")
@@ -67,15 +62,12 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
         for card in cards:
             try:
                 name = card.find_element(By.CLASS_NAME, "qBF1Pd").text
-                
-                # Rating
                 try:
                     rating = card.find_element(By.CLASS_NAME, "MW4etd").text
                     rating_float = float(rating)
                 except:
                     rating_float = 0.0
 
-                # Phone
                 try:
                     phone = card.find_element(By.CLASS_NAME, "UsdlK").text
                 except:
@@ -92,9 +84,64 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
             except:
                 continue
 
-        # Sort and return top 5
-        hospitals_sorted = sorted(hospitals, key=lambda x: x["rating"], reverse=True)
-        return hospitals_sorted[:5]
+        return sorted(hospitals, key=lambda x: x["rating"], reverse=True)[:5]
+
+    finally:
+        driver.quit()
+
+def scrape_nearby_ambulance(lat: float, lon: float):
+    coords = f"{lat},{lon}"
+    chrome_options = get_common_chrome_options()
+
+    driver = webdriver.Chrome(options=chrome_options)
+    wait = WebDriverWait(driver, 15)
+    ambulances = []
+
+    try:
+        driver.get(f"https://www.google.com/maps/search/{coords}")
+
+        nearby_btn = wait.until(
+            EC.element_to_be_clickable((By.XPATH, '//button[contains(@aria-label,"Nearby")]'))
+        )
+        nearby_btn.click()
+
+        time.sleep(1)
+
+        active_element = driver.switch_to.active_element
+        active_element.send_keys("ambulance service")
+        active_element.send_keys("\n")
+
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "Nv2PK")))
+        time.sleep(2)
+
+        cards = driver.find_elements(By.CLASS_NAME, "Nv2PK")
+
+        for card in cards:
+            try:
+                name = card.find_element(By.CLASS_NAME, "qBF1Pd").text
+                try:
+                    rating = card.find_element(By.CLASS_NAME, "MW4etd").text
+                    rating_float = float(rating)
+                except:
+                    rating_float = 0.0
+
+                try:
+                    phone = card.find_element(By.CLASS_NAME, "UsdlK").text
+                except:
+                    phone = "N/A"
+
+                link = card.find_element(By.CLASS_NAME, "hfpxzc").get_attribute("href")
+
+                ambulances.append({
+                    "name": name,
+                    "rating": rating_float,
+                    "phone": phone,
+                    "link": link
+                })
+            except:
+                continue
+
+        return sorted(ambulances, key=lambda x: x["rating"], reverse=True)[:5]
 
     finally:
         driver.quit()
@@ -102,10 +149,14 @@ def scrape_hospitals(disease: str, lat: float, lon: float):
 @app.get("/")
 def home():
     local_ip = get_local_ip()
+    # Using port 5000 as requested for ngrok
     return {
         "status": "API Running Locally",
-        "local_network_url": f"http://{local_ip}:8000/hospitals?disease=heart&lat=18.6135&lon=73.8165",
-        "instruction": "Send requests to the local_network_url from any device on your Wi-Fi."
+        "endpoints": {
+            "hospitals": f"http://{local_ip}:5000/hospitals?disease=heart&lat=18.6135&lon=73.8165",
+            "ambulance": f"http://{local_ip}:5000/ambulance?lat=18.6135&lon=73.8165"
+        },
+        "instruction": "Send requests to these URLs from any device on your Wi-Fi."
     }
 
 @app.get("/hospitals")
@@ -116,14 +167,22 @@ def get_hospitals(disease: str, lat: float, lon: float):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/ambulance")
+def get_ambulance(lat: float, lon: float):
+    try:
+        results = scrape_nearby_ambulance(lat, lon)
+        return {"results": results}
+    except Exception as e:
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
-    # Getting local IP to show in terminal
     local_ip = get_local_ip()
     print(f"\n--- SERVER STARTING ---")
-    print(f"Local Access: http://127.0.0.1:8000")
-    print(f"Network Access: http://{local_ip}:8000")
+    print(f"Local Access: http://127.0.0.1:5000")
+    print(f"Network Access: http://{local_ip}:5000")
     print(f"-----------------------\n")
-    
-    # host='0.0.0.0' allows external access on the same network
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5000)
+
+
+ 
